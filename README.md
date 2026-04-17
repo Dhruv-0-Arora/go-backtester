@@ -1,3 +1,50 @@
+# IMC Prosperity Go Backtester
+
+A Go port of the Rust `prosperity_rust_backtester`. The runner replays IMC
+Prosperity data through a Python trader and produces matching metrics,
+submission logs, and CSV artifacts. Output is intentionally byte-compatible
+with the Rust reference so diffs stay clean.
+
+## Requirements
+
+- Go 1.22+
+- `python3` on `PATH` (override with `BACKTESTER_PYTHON`)
+- A trader file that exposes a `class Trader` with a `run(state)` method
+
+No CGO/FFI: the Python trader is driven through a long-lived subprocess that
+speaks newline-delimited JSON over stdin/stdout. If a trader crashes, only
+the worker process goes down.
+
+## Build & test
+
+```bash
+cd backtester
+go build ./...
+go test ./...
+```
+
+A release-mode binary can be produced with:
+
+```bash
+go build -o bin/backtester ./cmd/backtester
+```
+
+## Run
+
+```bash
+# Latest populated round with artifact mode = submission log only (default)
+./bin/backtester --trader traders/latest_trader.py
+
+# Named dataset aliases (same names the Rust CLI accepts)
+./bin/backtester --dataset tutorial --carry
+
+# A single IMC prices CSV
+./bin/backtester --dataset datasets/tutorial/prices_round_0_day_-1.csv --day -1
+
+# An IMC submission log (treated as an already-executed tape)
+./bin/backtester --dataset datasets/tutorial/submission.log --artifact-mode full
+```
+
 Flags:
 
 | flag | description |
@@ -28,3 +75,39 @@ internal/jsonfmt/        Python-style float formatting + deterministic JSON
 internal/orderedmap/     generic insertion-ordered map for reproducible JSON
 internal/pytrader/       Python subprocess worker and its Go client
 ```
+
+## Design notes
+
+### Python trader integration
+
+The runner starts a single Python subprocess per backtest and sends
+serialised `TradingState` messages one per tick. See `internal/pytrader`
+for the protocol. The embedded worker script is written to a temporary
+file on startup so exception tracebacks point at real line numbers.
+
+### Deterministic output
+
+`internal/orderedmap` keeps insertion order on top of Go's random-iteration
+map so artifact JSON (e.g. `metrics.final_pnl_by_product`) is reproducible.
+`internal/jsonfmt.SortedJSONBytes` round-trips any value through a key-sorted
+renderer to match the Rust writer byte-for-byte.
+
+### Numeric fidelity
+
+All price math stays in `int64`. Cash is `float64`. Rounding uses
+`math.RoundToEven` which matches Rust's `f64::round_ties_even`, and
+`jsonfmt.PythonFloatString` keeps CSV floats visually identical to CPython.
+
+## Smoke tests
+
+The `scripts/` folder is not required; a minimal check against the bundled
+tutorial data is:
+
+```bash
+./bin/backtester --trader ../prosperity_rust_backtester/traders/latest_trader.py \
+  --dataset ../prosperity_rust_backtester/datasets/tutorial \
+  --artifact-mode none
+```
+
+which should produce per-day PnL around the same magnitudes the Rust
+reference emits for the same dataset/trader pair.
