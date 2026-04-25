@@ -103,6 +103,15 @@ func PositionLimitFor(symbol string) int64 {
 		return 200
 	case "MAGNIFICENT_MACARONS":
 		return 75
+	// Prosperity 4 round 3: "Options Require Decisions"
+	// (limits taken from problemset/round_3.md)
+	case "HYDROGEL_PACK", "VELVETFRUIT_EXTRACT":
+		return 200
+	case "VEV_4000", "VEV_4500",
+		"VEV_5000", "VEV_5100", "VEV_5200",
+		"VEV_5300", "VEV_5400", "VEV_5500",
+		"VEV_6000", "VEV_6500":
+		return 300
 	default:
 		return DefaultPositionLimit
 	}
